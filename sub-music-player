@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>多轨播放器</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f0f;color:#e8e8e8;min-height:100vh;padding:24px;}
+.app{max-width:680px;margin:0 auto;}
+h1{font-size:13px;font-weight:500;color:#555;letter-spacing:.1em;text-transform:uppercase;margin-bottom:20px;}
+
+.module{background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:16px;}
+.module-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.module-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;}
+.dot{width:8px;height:8px;border-radius:50%;}
+.dot-sub{background:#7c6af7;}
+.dot-music{background:#2eb87e;}
+.module-hint{font-size:11px;color:#555;font-weight:400;margin-left:2px;}
+.add-btn{font-size:12px;padding:5px 11px;border-radius:8px;border:1px solid #333;background:transparent;color:#aaa;cursor:pointer;}
+.add-btn:hover{background:#252525;color:#eee;}
+.empty{text-align:center;padding:22px;color:#555;font-size:13px;border:1px dashed #2a2a2a;border-radius:10px;}
+
+/* --- Subliminal tracks --- */
+.sub-track{display:grid;grid-template-columns:34px 1fr auto;gap:0 10px;align-items:center;padding:10px 0;border-bottom:1px solid #222;}
+.sub-track:last-child{border-bottom:none;}
+.play-btn{width:34px;height:34px;border-radius:50%;border:1px solid #333;background:transparent;color:#aaa;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.play-btn:hover{background:#252525;color:#eee;}
+.play-btn.active{background:#7c6af7;border-color:#7c6af7;color:#fff;}
+.track-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ddd;}
+.track-sub{font-size:11px;color:#555;margin-top:2px;}
+input[type=range].prog{width:100%;height:2px;-webkit-appearance:none;background:#2e2e2e;border-radius:2px;cursor:pointer;margin-top:7px;display:block;}
+input[type=range].prog::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#7c6af7;cursor:pointer;}
+.sub-right{display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:108px;}
+.vol-row{display:flex;align-items:center;gap:5px;font-size:11px;color:#555;}
+input[type=range].vol{width:64px;height:2px;-webkit-appearance:none;background:#2e2e2e;border-radius:2px;cursor:pointer;}
+input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#aaa;cursor:pointer;}
+.loop-btn{font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #333;background:transparent;color:#666;cursor:pointer;}
+.loop-btn.on{background:#2a2358;border-color:#7c6af7;color:#a99ffe;}
+.del-btn{background:transparent;border:none;color:#444;cursor:pointer;font-size:12px;}
+.del-btn:hover{color:#e06c6c;}
+
+/* --- Music list --- */
+.music-list{display:flex;flex-direction:column;gap:2px;margin-bottom:14px;}
+.music-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;}
+.music-row:hover{background:#222;}
+.music-row.active{background:#1a2e22;}
+.music-num{font-size:12px;color:#555;width:18px;text-align:center;flex-shrink:0;}
+.music-row.active .music-num{display:none;}
+.play-ind{display:none;width:18px;text-align:center;flex-shrink:0;font-size:12px;color:#2eb87e;}
+.music-row.active .play-ind{display:block;}
+.music-name{flex:1;font-size:13px;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.music-row.active .music-name{color:#2eb87e;font-weight:500;}
+.music-dur{font-size:11px;color:#555;flex-shrink:0;}
+.music-del{background:transparent;border:none;color:#333;cursor:pointer;font-size:12px;padding:2px 4px;opacity:0;}
+.music-row:hover .music-del{opacity:1;}
+.music-del:hover{color:#e06c6c;}
+
+/* --- Transport --- */
+.transport{background:#111;border-radius:10px;padding:12px 14px;}
+.t-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.t-name{font-size:13px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+.t-time{font-size:11px;color:#555;font-variant-numeric:tabular-nums;flex-shrink:0;margin-left:8px;}
+input[type=range].tprog{width:100%;height:3px;-webkit-appearance:none;background:#2e2e2e;border-radius:2px;cursor:pointer;display:block;margin-bottom:10px;}
+input[type=range].tprog::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#2eb87e;cursor:pointer;}
+.t-btns{display:flex;align-items:center;justify-content:center;gap:10px;}
+.tbtn{width:36px;height:36px;border-radius:50%;border:1px solid #333;background:transparent;color:#aaa;cursor:pointer;font-size:14px;}
+.tbtn:hover{background:#252525;color:#eee;}
+.tbtn.main{width:42px;height:42px;font-size:16px;background:#2eb87e;border-color:#2eb87e;color:#fff;}
+.tbtn.main:hover{background:#26a36e;}
+.tbtn.loop-on{background:#1a2e22;border-color:#2eb87e;color:#2eb87e;}
+.loop-label{font-size:11px;color:#555;margin-left:2px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>多轨播放器</h1>
+
+  <!-- Module 1 -->
+  <div class="module">
+    <div class="module-header">
+      <div class="module-title">
+        <div class="dot dot-sub"></div>
+        潜意识音频
+        <span class="module-hint">多轨同时播放</span>
+      </div>
+      <button class="add-btn" onclick="document.getElementById('sub-input').click()">＋ 添加音轨</button>
+      <input type="file" id="sub-input" accept="audio/*" multiple style="display:none" onchange="addSubTracks(this.files);this.value=''">
+    </div>
+    <div id="sub-list"><div class="empty">添加潜意识音频 / 白噪音，各轨独立同时播放</div></div>
+  </div>
+
+  <!-- Module 2 -->
+  <div class="module">
+    <div class="module-header">
+      <div class="module-title">
+        <div class="dot dot-music"></div>
+        音乐
+        <span class="module-hint">切歌自动停上一首</span>
+      </div>
+      <button class="add-btn" onclick="document.getElementById('mus-input').click()">＋ 添加音乐</button>
+      <input type="file" id="mus-input" accept="audio/*" multiple style="display:none" onchange="addMusic(this.files);this.value=''">
+    </div>
+    <div class="music-list" id="music-list"></div>
+    <div id="empty-music" class="empty">添加你的音乐，点曲目切换，自动停止上一首</div>
+    <div class="transport" id="transport" style="display:none">
+      <div class="t-header">
+        <span class="t-name" id="t-name">—</span>
+        <span class="t-time" id="t-time">0:00 / 0:00</span>
+      </div>
+      <input type="range" class="tprog" id="t-prog" min="0" max="100" value="0" step="0.1" oninput="seekMusic(this.value)">
+      <div class="t-btns">
+        <button class="tbtn" onclick="prevMusic()" title="上一首">⏮</button>
+        <button class="tbtn main" id="t-playbtn" onclick="toggleMusicPlay()">▶</button>
+        <button class="tbtn" onclick="nextMusic()" title="下一首">⏭</button>
+        <button class="tbtn" id="t-loop" onclick="cycleLoop()">🔁</button>
+        <span class="loop-label" id="loop-label">单次</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== UTILS ==========
+function fmt(s){if(!isFinite(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
+
+// ========== MODULE 1: SUBLIMINAL MIXER ==========
+const subs=[];
+function addSubTracks(files){
+  const list=document.getElementById('sub-list');
+  if(list.querySelector('.empty'))list.innerHTML='';
+  Array.from(files).forEach(f=>{
+    const id='s'+Date.now()+Math.random().toString(36).slice(2,6);
+    const audio=new Audio(URL.createObjectURL(f));
+    audio.loop=true; audio.volume=0.8;
+    const t={id,audio,file:f,loop:true};
+    subs.push(t);
+    const d=document.createElement('div');
+    d.className='sub-track'; d.id=id;
+    d.innerHTML=`
+      <button class="play-btn" id="pb${id}" onclick="toggleSub('${id}')">▶</button>
+      <div>
+        <div class="track-name" title="${f.name}">${f.name.replace(/\.[^/.]+$/,'')}</div>
+        <div class="track-sub"><span id="sc${id}">0:00</span> / <span id="sd${id}">--:--</span></div>
+        <input type="range" class="prog" id="sp${id}" min="0" max="100" value="0" step="0.1" oninput="seekSub('${id}',this.value)">
+      </div>
+      <div class="sub-right">
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="loop-btn on" id="lb${id}" onclick="toggleSubLoop('${id}')">循环</button>
+          <button class="del-btn" onclick="removeSub('${id}')">✕</button>
+        </div>
+        <div class="vol-row">🔈
+          <input type="range" class="vol" min="0" max="1" step="0.01" value="0.8" oninput="setSubVol('${id}',this.value)">
+          <span id="sv${id}">80%</span>
+        </div>
+      </div>`;
+    list.appendChild(d);
+    audio.addEventListener('loadedmetadata',()=>{const e=document.getElementById('sd'+id);if(e)e.textContent=fmt(audio.duration);});
+    audio.addEventListener('timeupdate',()=>{
+      if(!audio.duration)return;
+      const p=document.getElementById('sp'+id),c=document.getElementById('sc'+id);
+      if(p&&document.activeElement!==p)p.value=(audio.currentTime/audio.duration)*100;
+      if(c)c.textContent=fmt(audio.currentTime);
+    });
+  });
+}
+function toggleSub(id){
+  const t=subs.find(x=>x.id===id);if(!t)return;
+  const pb=document.getElementById('pb'+id);
+  if(t.audio.paused){t.audio.play();pb.className='play-btn active';pb.textContent='⏸';}
+  else{t.audio.pause();pb.className='play-btn';pb.textContent='▶';}
+}
+function toggleSubLoop(id){
+  const t=subs.find(x=>x.id===id);if(!t)return;
+  t.loop=!t.loop;t.audio.loop=t.loop;
+  const lb=document.getElementById('lb'+id);
+  lb.className='loop-btn'+(t.loop?' on':'');lb.textContent=t.loop?'循环':'单次';
+}
+function setSubVol(id,v){
+  const t=subs.find(x=>x.id===id);if(!t)return;
+  t.audio.volume=parseFloat(v);
+  const e=document.getElementById('sv'+id);if(e)e.textContent=Math.round(v*100)+'%';
+}
+function seekSub(id,v){
+  const t=subs.find(x=>x.id===id);if(!t||!t.audio.duration)return;
+  t.audio.currentTime=(v/100)*t.audio.duration;
+}
+function removeSub(id){
+  const i=subs.findIndex(x=>x.id===id);if(i<0)return;
+  subs[i].audio.pause();URL.revokeObjectURL(subs[i].audio.src);subs.splice(i,1);
+  const el=document.getElementById(id);if(el)el.remove();
+  if(subs.length===0)document.getElementById('sub-list').innerHTML='<div class="empty">添加潜意识音频 / 白噪音，各轨独立同时播放</div>';
+}
+
+// ========== MODULE 2: MUSIC PLAYER ==========
+const musics=[];
+let curIdx=-1;
+let loopMode='none'; // none | one | all
+const mAudio=new Audio();
+mAudio.addEventListener('timeupdate',updateMusicUI);
+mAudio.addEventListener('loadedmetadata',updateMusicUI);
+mAudio.addEventListener('ended',onEnded);
+
+function addMusic(files){
+  Array.from(files).forEach(f=>{
+    const id='m'+Date.now()+Math.random().toString(36).slice(2,6);
+    const probe=new Audio(); 
+    const blobUrl=URL.createObjectURL(f);
+    probe.src=blobUrl;
+    const t={id,file:f,dur:'--:--',url:blobUrl};
+    musics.push(t);
+    probe.addEventListener('loadedmetadata',()=>{
+      t.dur=fmt(probe.duration);
+      const e=document.getElementById('md'+id);if(e)e.textContent=t.dur;
+    });
+    renderMusic();
+  });
+  document.getElementById('empty-music').style.display='none';
+  document.getElementById('transport').style.display='block';
+  if(curIdx<0)loadMusic(0);
+}
+
+function renderMusic(){
+  const list=document.getElementById('music-list');
+  list.innerHTML='';
+  musics.forEach((t,i)=>{
+    const active=i===curIdx;
+    const row=document.createElement('div');
+    row.className='music-row'+(active?' active':'');
+    row.innerHTML=`
+      <span class="music-num">${i+1}</span>
+      <span class="play-ind">▶</span>
+      <span class="music-name" title="${t.file.name}">${t.file.name.replace(/\.[^/.]+$/,'')}</span>
+      <span class="music-dur" id="md${t.id}">${t.dur}</span>
+      <button class="music-del" onclick="removeMusic(${i},event)">✕</button>`;
+    row.addEventListener('click',e=>{
+      if(e.target.classList.contains('music-del'))return;
+      if(i===curIdx){toggleMusicPlay();}
+      else{loadMusic(i);mAudio.play();setPlayBtn(false);}
+    });
+    list.appendChild(row);
+  });
+}
+
+function loadMusic(idx){
+  if(idx<0||idx>=musics.length)return;
+  const was=!mAudio.paused;
+  mAudio.pause();
+  curIdx=idx;
+  mAudio.src=musics[idx].url;
+  mAudio.load();
+  mAudio.loop=(loopMode==='one');
+  document.getElementById('t-name').textContent=musics[idx].file.name.replace(/\.[^/.]+$/,'');
+  document.getElementById('t-prog').value=0;
+  document.getElementById('t-time').textContent='0:00 / 0:00';
+  renderMusic();
+  if(was){mAudio.play();setPlayBtn(false);}else{setPlayBtn(true);}
+}
+function toggleMusicPlay(){
+  if(mAudio.src==='')return;
+  if(mAudio.paused){mAudio.play();setPlayBtn(false);}
+  else{mAudio.pause();setPlayBtn(true);}
+}
+function setPlayBtn(paused){document.getElementById('t-playbtn').textContent=paused?'▶':'⏸';}
+function prevMusic(){if(!musics.length)return;loadMusic((curIdx-1+musics.length)%musics.length);mAudio.play();setPlayBtn(false);}
+function nextMusic(){if(!musics.length)return;loadMusic((curIdx+1)%musics.length);mAudio.play();setPlayBtn(false);}
+function seekMusic(v){if(!mAudio.duration)return;mAudio.currentTime=(v/100)*mAudio.duration;}
+function updateMusicUI(){
+  if(!mAudio.duration)return;
+  const p=document.getElementById('t-prog');
+  if(p&&document.activeElement!==p)p.value=(mAudio.currentTime/mAudio.duration)*100;
+  document.getElementById('t-time').textContent=fmt(mAudio.currentTime)+' / '+fmt(mAudio.duration);
+}
+function onEnded(){
+  if(loopMode==='one')return;
+  if(loopMode==='all'){nextMusic();return;}
+  setPlayBtn(true);
+}
+function cycleLoop(){
+  const modes=['none','one','all'];
+  const icons=['🔁','🔂','🔁'];
+  const labels=['单次','单曲循环','列表循环'];
+  loopMode=modes[(modes.indexOf(loopMode)+1)%3];
+  const i=modes.indexOf(loopMode);
+  mAudio.loop=(loopMode==='one');
+  const btn=document.getElementById('t-loop');
+  btn.textContent=icons[i];
+  btn.className='tbtn'+(loopMode!=='none'?' loop-on':'');
+  document.getElementById('loop-label').textContent=labels[i];
+}
+function removeMusic(idx,e){
+  e.stopPropagation();
+  URL.revokeObjectURL(musics[idx].url);
+  musics.splice(idx,1);
+  if(idx===curIdx){
+    mAudio.pause();mAudio.src='';
+    curIdx=musics.length>0?Math.min(idx,musics.length-1):-1;
+    if(curIdx>=0)loadMusic(curIdx);
+    else{document.getElementById('t-name').textContent='—';document.getElementById('t-prog').value=0;document.getElementById('t-time').textContent='0:00 / 0:00';}
+  }else if(idx<curIdx){curIdx--;}
+  renderMusic();
+  if(musics.length===0){document.getElementById('empty-music').style.display='';document.getElementById('transport').style.display='none';}
+}
+</script>
+</body>
+</html>
