@@ -6,19 +6,26 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f0f;color:#e8e8e8;min-height:100vh;padding:24px;}
-.app{max-width:680px;margin:0 auto;}
-h1{font-size:13px;font-weight:500;color:#555;letter-spacing:.1em;text-transform:uppercase;margin-bottom:20px;}
+.app{max-width:980px;margin:0 auto;}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;}
+h1{font-size:13px;font-weight:500;color:#555;letter-spacing:.1em;text-transform:uppercase;}
+.modules{display:flex;flex-direction:column;gap:16px;}
+.app.split .modules{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;}
 
-.module{background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:16px;}
-.module-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
-.module-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;}
+.module{background:#1a1a1a;border-radius:14px;padding:16px;min-width:0;}
+.module-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;}
+.module-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;min-width:0;}
 .dot{width:8px;height:8px;border-radius:50%;}
 .dot-sub{background:#7c6af7;}
 .dot-music{background:#2eb87e;}
 .module-hint{font-size:11px;color:#555;font-weight:400;margin-left:2px;}
-.add-btn{font-size:12px;padding:5px 11px;border-radius:8px;border:1px solid #333;background:transparent;color:#aaa;cursor:pointer;}
+.add-btn{font-size:12px;padding:5px 11px;border-radius:8px;border:1px solid #333;background:transparent;color:#aaa;cursor:pointer;white-space:nowrap;}
 .add-btn:hover{background:#252525;color:#eee;}
+.module-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 .empty{text-align:center;padding:22px;color:#555;font-size:13px;border:1px dashed #2a2a2a;border-radius:10px;}
+
+#sub-list,.music-list{max-height:52vh;overflow:auto;padding-right:4px;}
+.app.split #sub-list,.app.split .music-list{max-height:68vh;}
 
 /* --- Subliminal tracks --- */
 .sub-track{display:grid;grid-template-columns:34px 1fr auto;gap:0 10px;align-items:center;padding:10px 0;border-bottom:1px solid #222;}
@@ -69,12 +76,24 @@ input[type=range].tprog::-webkit-slider-thumb{-webkit-appearance:none;width:12px
 .tbtn.main:hover{background:#26a36e;}
 .tbtn.loop-on{background:#1a2e22;border-color:#2eb87e;color:#2eb87e;}
 .loop-label{font-size:11px;color:#555;margin-left:2px;}
+
+@media (max-width:760px){
+  body{padding:16px;}
+  .app.split .modules{display:flex;flex-direction:column;}
+  .module-header{align-items:flex-start;flex-direction:column;}
+  .module-actions{justify-content:flex-start;}
+  #sub-list,.music-list{max-height:none;}
+}
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>多轨播放器</h1>
+  <div class="topbar">
+    <h1>多轨播放器</h1>
+    <button class="add-btn" id="layout-btn" onclick="toggleLayout()">左右布局</button>
+  </div>
 
+  <div class="modules">
   <!-- Module 1 -->
   <div class="module">
     <div class="module-header">
@@ -83,7 +102,11 @@ input[type=range].tprog::-webkit-slider-thumb{-webkit-appearance:none;width:12px
         潜意识音频
         <span class="module-hint">多轨同时播放</span>
       </div>
-      <button class="add-btn" onclick="document.getElementById('sub-input').click()">＋ 添加音轨</button>
+      <div class="module-actions">
+        <button class="add-btn" onclick="playAllSubs()">全部播放</button>
+        <button class="add-btn" onclick="pauseAllSubs()">全部暂停</button>
+        <button class="add-btn" onclick="document.getElementById('sub-input').click()">＋ 添加音轨</button>
+      </div>
       <input type="file" id="sub-input" accept="audio/*" multiple style="display:none" onchange="addSubTracks(this.files);this.value=''">
     </div>
     <div id="sub-list"><div class="empty">添加潜意识音频 / 白噪音，各轨独立同时播放</div></div>
@@ -97,7 +120,9 @@ input[type=range].tprog::-webkit-slider-thumb{-webkit-appearance:none;width:12px
         音乐
         <span class="module-hint">切歌自动停上一首</span>
       </div>
-      <button class="add-btn" onclick="document.getElementById('mus-input').click()">＋ 添加音乐</button>
+      <div class="module-actions">
+        <button class="add-btn" onclick="document.getElementById('mus-input').click()">＋ 添加音乐</button>
+      </div>
       <input type="file" id="mus-input" accept="audio/*" multiple style="display:none" onchange="addMusic(this.files);this.value=''">
     </div>
     <div class="music-list" id="music-list"></div>
@@ -117,11 +142,26 @@ input[type=range].tprog::-webkit-slider-thumb{-webkit-appearance:none;width:12px
       </div>
     </div>
   </div>
+  </div>
 </div>
 
 <script>
 // ========== UTILS ==========
 function fmt(s){if(!isFinite(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
+let layoutMode=getSavedLayoutMode();
+function getSavedLayoutMode(){try{return localStorage.getItem('layoutMode')||'stack';}catch(e){return'stack';}}
+function saveLayoutMode(){try{localStorage.setItem('layoutMode',layoutMode);}catch(e){}}
+function applyLayout(){
+  const app=document.querySelector('.app'),btn=document.getElementById('layout-btn');
+  if(!app)return;
+  app.classList.toggle('split',layoutMode==='split');
+  if(btn)btn.textContent=layoutMode==='split'?'上下布局':'左右布局';
+}
+function toggleLayout(){
+  layoutMode=layoutMode==='split'?'stack':'split';
+  saveLayoutMode();
+  applyLayout();
+}
 
 // ========== MODULE 1: SUBLIMINAL MIXER ==========
 const subs=[];
@@ -163,11 +203,25 @@ function addSubTracks(files){
     });
   });
 }
+function updateSubPlayButton(id,playing){
+  const pb=document.getElementById('pb'+id);if(!pb)return;
+  pb.className='play-btn'+(playing?' active':'');pb.textContent=playing?'⏸':'▶';
+}
 function toggleSub(id){
   const t=subs.find(x=>x.id===id);if(!t)return;
-  const pb=document.getElementById('pb'+id);
-  if(t.audio.paused){t.audio.play();pb.className='play-btn active';pb.textContent='⏸';}
-  else{t.audio.pause();pb.className='play-btn';pb.textContent='▶';}
+  if(t.audio.paused){t.audio.play().then(()=>updateSubPlayButton(id,true)).catch(()=>{});}
+  else{t.audio.pause();updateSubPlayButton(id,false);}
+}
+function playAllSubs(){
+  if(!subs.length)return;
+  const plays=subs.map(t=>{
+    t.audio.currentTime=0;
+    return t.audio.play().then(()=>updateSubPlayButton(t.id,true)).catch(()=>{});
+  });
+  Promise.allSettled(plays);
+}
+function pauseAllSubs(){
+  subs.forEach(t=>{t.audio.pause();updateSubPlayButton(t.id,false);});
 }
 function toggleSubLoop(id){
   const t=subs.find(x=>x.id===id);if(!t)return;
@@ -300,6 +354,7 @@ function removeMusic(idx,e){
   renderMusic();
   if(musics.length===0){document.getElementById('empty-music').style.display='';document.getElementById('transport').style.display='none';}
 }
+applyLayout();
 </script>
 </body>
 </html>
