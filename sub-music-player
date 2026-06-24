@@ -80,6 +80,13 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;h
 .loop-btn.on{background:var(--sub-soft);border-color:var(--sub);color:var(--sub-soft-text);}
 .del-btn{background:transparent;border:none;color:var(--delete);cursor:pointer;font-size:12px;}
 .del-btn:hover{color:var(--danger);}
+.limit-row{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);}
+.limit-input{width:46px;padding:2px 4px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--button);font-size:11px;}
+.limit-hit{font-size:11px;color:var(--danger);min-height:14px;}
+.sub-track.disabled{opacity:.48;}
+.sub-track.disabled .track-name,.sub-track.disabled .track-sub{color:var(--muted);}
+.sub-track.disabled .play-btn,.sub-track.disabled .loop-btn{cursor:not-allowed;}
+.sub-track.disabled input[type=range]{cursor:not-allowed;}
 
 /* --- Music list --- */
 .music-list{display:flex;flex-direction:column;gap:2px;margin-bottom:14px;}
@@ -222,14 +229,36 @@ if(systemThemeQuery)systemThemeQuery.addEventListener('change',()=>{if(themeMode
 
 // ========== MODULE 1: SUBLIMINAL MIXER ==========
 const subs=[];
+const SUB_DAILY_STATE_KEY='subDailyPlayState';
+function todayKey(){return new Date().toLocaleDateString('sv-SE');}
+function getSubTrackKey(file){return [file.name,file.size,file.lastModified].join('|');}
+function loadSubDailyState(){try{return JSON.parse(localStorage.getItem(SUB_DAILY_STATE_KEY)||'{}')||{};}catch(e){return{};}}
+function saveSubDailyState(state){try{localStorage.setItem(SUB_DAILY_STATE_KEY,JSON.stringify(state));}catch(e){}}
+function getSubDailyRecord(key){
+  const state=loadSubDailyState(),today=todayKey();
+  const saved=state[key]||{};
+  const record={date:today,count:saved.date===today?Number(saved.count)||0:0,limit:Math.max(0,parseInt(saved.limit,10)||0)};
+  state[key]=record;saveSubDailyState(state);
+  return record;
+}
+function saveSubDailyRecord(t){const state=loadSubDailyState();state[t.key]={date:t.daily.date,count:t.daily.count,limit:t.daily.limit};saveSubDailyState(state);}
+function refreshSubDailyDate(t){
+  const today=todayKey();
+  if(t.daily.date!==today){t.daily.date=today;t.daily.count=0;saveSubDailyRecord(t);}
+}
+function hasSubDailyLimit(t){return t.daily.limit>0;}
+function isSubLimitReached(t){refreshSubDailyDate(t);return hasSubDailyLimit(t)&&t.daily.count>=t.daily.limit;}
+function syncSubAudioLoop(t){t.audio.loop=false;}
 function addSubTracks(files){
   const list=document.getElementById('sub-list');
   if(list.querySelector('.empty'))list.innerHTML='';
   Array.from(files).forEach(f=>{
     const id='s'+Date.now()+Math.random().toString(36).slice(2,6);
     const audio=new Audio(URL.createObjectURL(f));
-    audio.loop=true; audio.volume=0.8;
-    const t={id,audio,file:f,loop:true};
+    audio.volume=0.8;
+    const key=getSubTrackKey(f),daily=getSubDailyRecord(key);
+    const t={id,audio,file:f,loop:true,key,daily};
+    syncSubAudioLoop(t);
     subs.push(t);
     const d=document.createElement('div');
     d.className='sub-track'; d.id=id;
@@ -237,7 +266,7 @@ function addSubTracks(files){
       <button class="play-btn" id="pb${id}" onclick="toggleSub('${id}')">▶</button>
       <div>
         <div class="track-name" title="${f.name}">${f.name.replace(/\.[^/.]+$/,'')}</div>
-        <div class="track-sub"><span id="sc${id}">0:00</span> / <span id="sd${id}">--:--</span></div>
+        <div class="track-sub"><span id="sc${id}">0:00</span> / <span id="sd${id}">--:--</span> · 今日 <span id="scc${id}">0</span> / <span id="scl${id}">不限</span></div>
         <input type="range" class="prog" id="sp${id}" min="0" max="100" value="0" step="0.1" oninput="seekSub('${id}',this.value)">
       </div>
       <div class="sub-right">
@@ -245,8 +274,12 @@ function addSubTracks(files){
           <button class="loop-btn on" id="lb${id}" onclick="toggleSubLoop('${id}')">循环</button>
           <button class="del-btn" onclick="removeSub('${id}')">✕</button>
         </div>
+        <div class="limit-row">上限
+          <input class="limit-input" id="slim${id}" type="number" min="0" step="1" value="${daily.limit||''}" placeholder="不限" onchange="setSubDailyLimit('${id}',this.value)">
+        </div>
+        <div class="limit-hit" id="shit${id}"></div>
         <div class="vol-row">🔈
-          <input type="range" class="vol" min="0" max="1" step="0.01" value="0.8" oninput="setSubVol('${id}',this.value)">
+          <input type="range" class="vol" id="svol${id}" min="0" max="1" step="0.01" value="0.8" oninput="setSubVol('${id}',this.value)">
           <span id="sv${id}">80%</span>
         </div>
       </div>`;
@@ -258,23 +291,58 @@ function addSubTracks(files){
       if(p&&document.activeElement!==p)p.value=(audio.currentTime/audio.duration)*100;
       if(c)c.textContent=fmt(audio.currentTime);
     });
+    audio.addEventListener('ended',()=>onSubEnded(id));
+    updateSubLimitUI(id);
   });
 }
 function updateSubPlayButton(id,playing){
-  const pb=document.getElementById('pb'+id);if(!pb)return;
-  pb.className='play-btn'+(playing?' active':'');pb.textContent=playing?'⏸':'▶';
+  const t=subs.find(x=>x.id===id),pb=document.getElementById('pb'+id);if(!pb)return;
+  if(t&&isSubLimitReached(t)){pb.className='play-btn';pb.textContent='▶';pb.disabled=true;return;}
+  pb.disabled=false;pb.className='play-btn'+(playing?' active':'');pb.textContent=playing?'⏸':'▶';
+}
+function updateSubLimitUI(id){
+  const t=subs.find(x=>x.id===id);if(!t)return;
+  refreshSubDailyDate(t);
+  const reached=isSubLimitReached(t),el=document.getElementById(id),count=document.getElementById('scc'+id),limit=document.getElementById('scl'+id),hit=document.getElementById('shit'+id),prog=document.getElementById('sp'+id),vol=document.getElementById('svol'+id),loop=document.getElementById('lb'+id),input=document.getElementById('slim'+id);
+  if(count)count.textContent=t.daily.count;
+  if(limit)limit.textContent=hasSubDailyLimit(t)?t.daily.limit:'不限';
+  if(hit)hit.textContent=reached?'已达上限':'';
+  if(el)el.classList.toggle('disabled',reached);
+  if(prog)prog.disabled=reached;
+  if(vol)vol.disabled=reached;
+  if(loop)loop.disabled=reached;
+  if(input&&document.activeElement!==input)input.value=t.daily.limit||'';
+  updateSubPlayButton(id,!t.audio.paused&& !reached);
+}
+function recordSubCompletedPlay(t){refreshSubDailyDate(t);t.daily.count++;saveSubDailyRecord(t);updateSubLimitUI(t.id);}
+function stopSubForLimit(t){t.audio.pause();t.audio.currentTime=0;updateSubPlayButton(t.id,false);updateSubLimitUI(t.id);}
+function onSubEnded(id){
+  const t=subs.find(x=>x.id===id);if(!t)return;
+  recordSubCompletedPlay(t);
+  if(isSubLimitReached(t)){stopSubForLimit(t);return;}
+  if(t.loop){t.audio.currentTime=0;t.audio.play().then(()=>updateSubPlayButton(id,true)).catch(()=>updateSubPlayButton(id,false));}
+  else updateSubPlayButton(id,false);
+}
+function setSubDailyLimit(id,value){
+  const t=subs.find(x=>x.id===id);if(!t)return;
+  const n=Math.max(0,parseInt(value,10)||0);
+  refreshSubDailyDate(t);t.daily.limit=n;saveSubDailyRecord(t);syncSubAudioLoop(t);
+  if(isSubLimitReached(t))stopSubForLimit(t);else updateSubLimitUI(id);
 }
 function toggleSub(id){
   const t=subs.find(x=>x.id===id);if(!t)return;
+  if(isSubLimitReached(t)){stopSubForLimit(t);return;}
+  syncSubAudioLoop(t);
   if(t.audio.paused){t.audio.play().then(()=>updateSubPlayButton(id,true)).catch(()=>{});}
   else{t.audio.pause();updateSubPlayButton(id,false);}
 }
 function playAllSubs(){
   if(!subs.length)return;
-  const plays=subs.map(t=>{
-    t.audio.currentTime=0;
+  const plays=subs.filter(t=>!isSubLimitReached(t)).map(t=>{
+    syncSubAudioLoop(t);t.audio.currentTime=0;
     return t.audio.play().then(()=>updateSubPlayButton(t.id,true)).catch(()=>{});
   });
+  subs.filter(t=>isSubLimitReached(t)).forEach(t=>stopSubForLimit(t));
   Promise.allSettled(plays);
 }
 function pauseAllSubs(){
@@ -282,17 +350,18 @@ function pauseAllSubs(){
 }
 function toggleSubLoop(id){
   const t=subs.find(x=>x.id===id);if(!t)return;
-  t.loop=!t.loop;t.audio.loop=t.loop;
+  if(isSubLimitReached(t)){updateSubLimitUI(id);return;}
+  t.loop=!t.loop;syncSubAudioLoop(t);
   const lb=document.getElementById('lb'+id);
   lb.className='loop-btn'+(t.loop?' on':'');lb.textContent=t.loop?'循环':'单次';
 }
 function setSubVol(id,v){
-  const t=subs.find(x=>x.id===id);if(!t)return;
+  const t=subs.find(x=>x.id===id);if(!t||isSubLimitReached(t))return;
   t.audio.volume=parseFloat(v);
   const e=document.getElementById('sv'+id);if(e)e.textContent=Math.round(v*100)+'%';
 }
 function seekSub(id,v){
-  const t=subs.find(x=>x.id===id);if(!t||!t.audio.duration)return;
+  const t=subs.find(x=>x.id===id);if(!t||!t.audio.duration||isSubLimitReached(t))return;
   t.audio.currentTime=(v/100)*t.audio.duration;
 }
 function removeSub(id){
